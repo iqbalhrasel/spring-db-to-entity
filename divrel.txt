@@ -1,0 +1,450 @@
+################################
+User and Addresses (Address class)
+################################
+CREATE TABLE `users` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) NOT NULL,
+  PRIMARY KEY (`id`)
+)
+
+CREATE TABLE `addresses` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `street` varchar(255) NOT NULL,
+  `user_id` bigint NOT NULL,
+  PRIMARY KEY (`id`),
+  FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
+)
+
+public class User {
+  private Long id;
+  private String name;
+  
+  @OneToMany(mappedBy = "user", cascade = {CascadeType.PERSIST, CascadeType.REMOVE}, orphanRemoval = true)
+  private List<Address> addresses = new ArrayList<>();
+}
+
+public class Address {
+  private Long id;
+  private String street;
+  
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "user_id")
+  private User user;
+}
+
+public interface UserRepository extends CrudRepository<User, Long>{
+  @EntityGraph(attributePaths = {"tags", "addresses"})
+  Optional<User> findByEmail(String email);
+  
+  @EntityGraph(attributePaths = "addresses")
+  @Query("SELECT u FROM User u")
+  List<User> findAllWithAddresses();
+}
+
+Key Takeaways
+--------------------------------------------------------------------------------
+If a table has a foreign key column, use @JoinColumn.
+If the relationship is managed through a separate join table, use @JoinTable.
+
+@ManyToOne → EAGER by default
+@OneToOne → EAGER by default
+@OneToMany → LAZY by default
+@ManyToMany → LAZY by default
+
+::orphanRemoval = true
+if in schema, user_id is NOT NULL
+it deletes addresses when user_id(User class) is set to NULL
+
+::cascade = {PERSIST, REMOVE} 
+means if you save or delete a User, their addresses are saved or deleted too 
+
+//java service class
+User user = userRepository.findById(2L).get();
+System.out.println(user);
+
+Only the User is fetched if getAddresses() is not called and toString() without mentioned the addresses.
+if addresses needed and fetch is Lazy, can cause LazyInitializationException.
+in this case use @Transactional in service class.
+
+Avoid calling LAZY fields inside toString(), equals(), or hashCode() methods — 
+it can unintentionally trigger lazy loading or cause LazyInitializationException.
+
+//java repository class
+@EntityGraph is used to customize what Hibernate should eagerly load at query time 
+without changing the default LAZY behavior in your entities
+
+When calling findByEmail(..), also eagerly fetch tags and addresses even though they're marked as LAZY
+
+Why is this better than using FetchType.EAGER?
+Because:
+- It keeps your entities clean and light
+- You choose when to load related data
+- It avoids over-fetching in general queries
+--------------------------------------------------------------------------------
+
+
+################################
+User and Tags (Tag class)
+################################
+CREATE TABLE `users` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) NOT NULL,
+  PRIMARY KEY (`id`)
+)
+
+CREATE TABLE `tags` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) DEFAULT NULL,
+  PRIMARY KEY (`id`)
+)
+
+public class User {
+  private Long id;
+  private String name;
+  
+  @ManyToMany
+  @JoinTable(name = "user_tags", joinColumns = @JoinColumn(name = "user_id"), 
+  inverseJoinColumns = @JoinColumn(name = "tag_id"))
+  private Set<Tag> tags = new HashSet<>();
+}
+
+public class Tag {
+  private Long id;
+  private String name;
+  
+  @ManyToMany(mappedBy = "tags")
+  private Set<User> users = new HashSet<>();
+}
+
+
+Key Takeaways
+--------------------------------------------------------------------------------
+- inverseJoinColumns = @JoinColumn(name = "tag_id") is in the User class 
+because User is the owning side of the relationship, 
+and you're defining how the join table user_tags maps from user to tag
+
+- joinColumns → says “in the join table, user_id is my (User’s) column”
+- inverseJoinColumns → says “in the join table, tag_id points to the other side, i.e., Tag”
+You only define this once — on the owning side, here the User class.
+
+Why not in the Tag class?
+- Because the Tag class has @ManyToMany(mappedBy = "tags"). Here (mappedBy = "tags") is important.
+- mappedBy = "tags", This means it’s the inverse side. Means, handled by other class, i.e. User class.
+
+The mappedBy = "tags" says:
+- “The mapping is already defined in the User class by the tags field — I’ll just reflect that.”
+- So you don’t define @JoinTable or @JoinColumn in Tag.
+
+
+Concept                                 User class               Tag class
+-------                                 ----------               ----------
+Side of Relationship                    Owning side              Inverse side
+Annotation Used                       @JoinTable(...)           mappedBy = "tags"
+Controls DB Join Table                      ✅ Yes                   ❌ No
+Has joinColumns and inverseJoinColumns      ✅ Yes                   ❌ No
+
+
+Why @JoinColumn inside @JoinTable?
+@JoinColumn inside @JoinTable tells Hibernate:
+- “In the join table, here are the columns that represent the two sides of the relationship.”
+So:
+- joinColumns = @JoinColumn(name = "user_id") → this column refers to the owning entity (User)
+- inverseJoinColumns = @JoinColumn(name = "tag_id") → this column refers to the target entity (Tag)
+
+in SQL Format:
+SELECT * FROM users
+JOIN user_tags ON users.id = user_tags.user_id
+JOIN tags ON user_tags.tag_id = tags.id;
+
+
+SQL Part                                                  Java/JPA Annotation
+---------                                                 -------------------
+JOIN user_tags ON users.id = user_tags.user_id        @JoinTable(... joinColumns = @JoinColumn(name = "user_id") ...)
+JOIN tags ON user_tags.tag_id = tags.id               inverseJoinColumns = @JoinColumn(name = "tag_id")
+user_tags as the join table                           @JoinTable(name = "user_tags", ...)
+
+
+@ManyToMany → LAZY by default
+So, in this case use @Transactional in service class
+--------------------------------------------------------------------------------
+
+
+
+################################
+User and Profiles (Profile class)
+################################
+CREATE TABLE `users` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) NOT NULL,
+  PRIMARY KEY (`id`)
+)
+
+CREATE TABLE `profiles` (
+  `id` bigint NOT NULL,
+  `bio` text,
+  `loyalty_points` int unsigned DEFAULT '0',
+  PRIMARY KEY (`id`),
+  FOREIGN KEY (`id`) REFERENCES `users` (`id`)
+)
+
+public class User {
+  private Long id;
+  private String name;
+  
+  @OneToOne(mappedBy = "user", cascade = CascadeType.REMOVE)
+  private Profile profile;
+}
+
+public class Profile {
+  private Long id;
+  private String bio;
+  
+  @OneToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "id")
+  @MapsId
+  private User user;
+}
+
+
+Key Takeaways
+--------------------------------------------------------------------------------
+@MapsId in Profile means:
+- The user field’s id is used as the Profile's primary key.
+- "Use the id of the associated User as the primary key of Profile."
+So, no separate profile id generator — it's exactly the same as the user id.
+- tells JPA that the primary key of Profile.id comes from User.id
+
+Why use this?
+- When the profile logically extends User but needs its own table.
+- Avoids a separate profile_id by sharing primary key.
+- Makes it easy to join tables via PK-PK relationship.
+
+When we fetch user it will automatically fetch profile. but when we fetch only profile, 
+it will not automatically fetch the user. right? so service method for user don't need @Transactional. 
+But service method for profile need @Transactional. right?
+- This is in the User class. No fetch type mentioned → default = EAGER → Profile is loaded automatically 
+when you fetch User. So, don't need @Transactional at service method.
+- In the Profile class, you explicitly marked it as LAZY → User is NOT loaded automatically 
+when you fetch Profile. So, we need @Transactional at service method if 
+you call profile.getUser() outside of an open transaction.
+
+Scenario                          Needs @Transactional?                 Why?
+--------                          ---------------------                 ----
+Fetching User                           ❌ No                    Profile is eagerly loaded by default
+Fetching Profile                        ✅ Yes                   user field is LAZY; needs open session
+Calling profile.getUser()               ✅ Yes                   Triggers lazy load → must be inside txn
+Accessing user.getProfile()             ❌ No                    Already eagerly loaded
+--------------------------------------------------------------------------------
+
+
+
+################################
+User and Wishlist (composite table)
+################################
+CREATE TABLE `users` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) NOT NULL,
+  PRIMARY KEY (`id`)
+)
+
+CREATE TABLE `wishlist` (
+  `product_id` bigint NOT NULL,
+  `user_id` bigint NOT NULL,
+  PRIMARY KEY (`product_id`,`user_id`),
+  FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE CASCADE,
+  FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
+)
+
+public class User {
+  private Long id;
+  private String name;
+  
+  @ManyToMany
+  @JoinTable(name = "wishlist", joinColumns= @JoinColumn(name="user_id"), inverseJoinColumns = @JoinColumn(name="product_id"))
+  private Set<Product> wishlist = new HashSet<>();
+}
+
+
+Key Takeaways
+--------------------------------------------------------------------------------
+difference between bidirectional and unidirectional @ManyToMany relationships in JPA:
+
+Feature                                  Bidirectional                  Unidirectional
+-------                                 ---------------                 ---------------
+Mapped in both entities                  ✅ Yes                         ❌ No
+Relationship ownership                One side owns, one side mirrors     Only one side owns
+mappedBy needed?                         ✅ Yes                         ❌ No
+Can navigate from both directions        ✅ Yes (user ↔ tag)            ❌ No (user → product only)
+Simpler setup                            ❌ More complex                ✅ Cleaner for read-only intent
+DB structure                             ✅ Same: uses join table       ✅ Same: uses join table
+
+
+Why Use Unidirectional Here?
+In the wishlist case, you might only care about:
+- “What products are in the user's wishlist?”
+- You don’t need the reverse: “Which users have wished for this product?”. Hence, you define it only in User.
+
+This makes it:
+- Easier to maintain
+- Less confusing for beginners
+- Avoids extra memory if reverse side is never used
+
+
+When to Choose Which?
+Use Case                                          Recommendation
+--------                                          --------------
+You need to query from both ends                  Use bidirectional
+You only care about one direction                 Use unidirectional
+You want simpler code and mapping                 Unidirectional is fine
+
+
+Rule of Thumb:
+- Use bidirectional when both entities need access
+- Use unidirectional when only one side needs to know the relationship
+
+--------------------------------------------------------------------------------
+
+
+################################
+Product and Categories (Category class)
+################################
+CREATE TABLE `products` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) NOT NULL,
+  `category_id` tinyint DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  FOREIGN KEY (`category_id`) REFERENCES `categories` (`id`) ON DELETE RESTRICT
+)
+
+CREATE TABLE `categories` (
+  `id` tinyint NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) NOT NULL,
+  PRIMARY KEY (`id`)
+)
+
+public class Product {
+  private Long id;
+  private String name;
+  
+  @ManyToOne(cascade = CascadeType.PERSIST)
+  @JoinColumn(name = "category_id")
+  private Category category;
+}
+
+public class Category {
+  private Byte id;
+  private String name;
+  
+  @OneToMany(mappedBy = "category")
+  private Set<Product> products = new HashSet<>();
+}
+
+Key Takeaways
+--------------------------------------------------------------------------------
+Relationship
+- Product → Category: Many-to-One (many products can belong to one category)
+- Category → Product: One-to-Many (one category can have many products)
+
+
+Default Fetch Types:
+Relationship        Fetch Type
+------------        -----------
+@ManyToOne            EAGER
+@OneToMany            LAZY
+
+CascadeType.PERSIST in Product:
+- When you save a Product, if its Category is new (not managed), it will be automatically saved too.
+- However, if Category already exists in DB, you should fetch it and set it — not recreate it.
+
+N DELETE RESTRICT
+- This means a category cannot be deleted if it has any products.
+- Prevents accidental data loss — safer default.
+
+So:
+- Fetching a product will load its category by default.
+- Fetching a category won’t auto-load its products unless you do it manually or 
+use @EntityGraph or @Transactional.
+
+--------------------------------------------------------------------------------
+
+
+===============================================
+===============================================
+Final Takeaways
+===============================================
+===============================================
+Why prefer Lazy in real projects?
+Performance:
+- Eager loading can cause loading a lot of data upfront, even if not needed, which slows down your app.
+
+Avoid Large Joins:
+- Eager loading multiple relationships can lead to huge SQL queries with multiple joins — hard to optimize.
+
+Flexibility:
+- You can selectively fetch related data with @EntityGraph or custom queries, instead of always fetching everything.
+
+Memory Management:
+- Fetching less data means less memory usage, especially important for large datasets.
+
+Example scenario:
+- You fetch a list of users — do you always want to load all their orders, addresses, and tags? 
+Probably not. Lazy loading waits until you explicitly ask for those.
+
+Practical tip:
+- Set fetch = FetchType.LAZY explicitly for most collections and relationships.
+- Use custom queries or @EntityGraph to fetch related entities only when needed.
+- This approach avoids unnecessary database load and improves app scalability.
+
+
+Changing default eager loading to lazy loading is mostly about improving performance 
+by preventing unnecessary database queries and large data loads. Here’s a clear explanation:
+
+Why make a default eager relationship lazy?
+Some relationships in JPA default to EAGER (like @ManyToOne and @OneToOne) because 
+usually you want that related entity loaded immediately. 
+But often this eagerness causes hidden performance problems.
+
+Performance issues fixed by switching to lazy:
+Avoid Large, Complex Joins:
+- Eager fetching often triggers SQL JOINs that pull in related entities immediately.
+- For example, fetching a list of users with eager @ManyToOne might join the entire 
+related table (like addresses or profiles), resulting in a huge, slow query.
+
+Reduce Data Overfetching:
+- Sometimes your app only needs the main entity’s data, not all related entities. 
+Eager fetch loads all related data even if you never use it — wasting CPU, network, and memory.
+
+Prevent the N+1 Query Problem (when done right):
+- If eager fetch causes Hibernate to generate one big query with many joins, 
+it can be slower or cause Cartesian product issues. Lazy loading fetches related 
+entities on demand, allowing you to control fetching strategies better with explicit queries.
+
+Control Over When and What to Load:
+- Lazy loading delays fetching until you explicitly access the relationship, 
+so you can optimize your service or repository layer to load only what’s necessary 
+using join fetch or @EntityGraph.
+
+
+
+Example: @ManyToOne default eager problem
+Imagine you fetch 100 Order entities, each eager loading the related Customer. The query will join orders 
+and customers — which might be fine for small data but can explode with big tables or 
+multiple eager associations.
+Switching to lazy loading:
+- Fetch 100 orders with a simple query first (no join to customers).
+- Fetch customer data only when needed by calling order.getCustomer() inside an open transaction.
+
+
+
+Summary
+Problem with Default Eager                        Benefit of Making it Lazy
+--------------------------                        --------------------------
+Large join queries slowing down performance       Smaller initial queries, faster response times
+Loading unnecessary related data                  Loads related data only when explicitly needed
+Memory and network usage spikes                   Saves memory and bandwidth by deferring loads
+Hard to optimize query plans                      More control on fetching strategy
+
+In practice:
+- Set eager by default to lazy on @ManyToOne or @OneToOne when your use case 
+doesn't always require the related entity immediately.
+- Use fetch join queries or @EntityGraph to load relations when you know you need them.
