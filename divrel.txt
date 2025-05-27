@@ -345,6 +345,7 @@ Relationship
 - Product → Category: Many-to-One (many products can belong to one category)
 - Category → Product: One-to-Many (one category can have many products)
 
+- The @JoinColumn(name = "category_id") says: in the Product table, there will be a column called category_id acting as a foreign key to Category.id.
 
 Default Fetch Types:
 Relationship        Fetch Type
