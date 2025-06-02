@@ -1,0 +1,61 @@
+::fetch = FetchType
+
+Is fetch type applicable for all relation types?
+Yes, fetch = FetchType is applicable to all relationship annotations — meaning associations between entities.
+
+You can use fetch with:
+
+Relationship Type			Annotation Example
+-----------------			-------------------
+One-to-One					@OneToOne(fetch = FetchType.LAZY)
+One-to-Many					@OneToMany(fetch = FetchType.LAZY)
+Many-to-One					@ManyToOne(fetch = FetchType.EAGER)
+Many-to-Many				@ManyToMany(fetch = FetchType.LAZY)
+
+
+What fetch means:
+It defines when the associated entity/entities are loaded:
+
+Fetch Type			Description
+----------			-----------
+LAZY				Associated entity is loaded on-demand, when accessed. (Uses proxy)
+EAGER				Associated entity is loaded immediately, along with the parent entity.
+
+
+Default Fetch Behavior (very important):
+Annotation			Default Fetch Type
+----------			-------------------
+@OneToOne			EAGER
+@OneToMany			LAZY
+@ManyToOne			EAGER
+@ManyToMany			LAZY
+
+
+Tip:
+Always try to default to LAZY, unless you know you need the associated data right away. This avoids unnecessary database hits and reduces the risk of N+1 problems.
+
+
+When to use eager and lazy?
+
+Simple Analogy
+---------------
+Think of EAGER vs LAZY like ordering food at a restaurant.
+
+EAGER = “Bring everything now!”
+LAZY = “I’ll ask for it when I need it.”
+
+
+Use LAZY When:
+--------------
+- You don’t always need the related data right away.
+- You want to optimize performance (fewer queries, smaller result sets).
+- The associated data is large or optional.
+- You're dealing with collections (@OneToMany, @ManyToMany).
+
+Most real-world use cases prefer LAZY by default.
+
+Use EAGER When:
+---------------
+- The related data is always needed with the parent.
+- It’s a small, fixed-size relationship (e.g. one-to-one or many-to-one).
+- You want simplicity in data loading, even at the cost of some performance.

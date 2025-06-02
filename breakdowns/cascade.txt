@@ -1,0 +1,224 @@
+::cascade = CascadeType
+
+is it applicable for all relation annotations?
+
+Yes, cascade = CascadeType is applicable to all types of relationship annotations in JPA — but its usage and behavior depend on the context of the relationship. Let's break it down simply.
+
+Applicable Relationship Annotations
+-----------------------------------
+You can use cascade with:
+@OneToOne
+@OneToMany
+@ManyToOne
+@ManyToMany
+
+What Does cascade Mean?
+It tells JPA:
+"When I perform an operation on the parent entity, automatically perform the same operation on the child."
+
+
+Cascade in Different Relationships
+Relationship		Cascade Common?				Why / When to Use
+------------		---------------				-------------------
+@OneToOne				✅ Yes					Often tightly bound (e.g. User and Profile)
+@OneToMany				✅ Yes					Parent owns many children (e.g. Order and OrderItem)
+@ManyToOne				❌ Rarely				Child points to parent; you usually don’t cascade upward
+@ManyToMany				⚠️ Careful				Cascade can cause issues if shared entities are reused 
+												elsewhere (e.g. tags shared across posts)
+
+
+Example of Useful Cascading:
+-----------------------------
+@OneToOne(cascade = CascadeType.ALL)
+@JoinColumn(name = "profile_id")
+private Profile profile;
+
+= Saving User will also save the Profile.
+
+
+Example Where Cascading Is Risky:
+--------------------------------
+@ManyToOne(cascade = CascadeType.REMOVE)
+private Category category;
+
+⚠️ This is dangerous! Removing a Product would remove the Category too, even if it's used by other products.
+
+
+Safe Default Tip
+----------------
+Start with no cascade. Add it only when you need it, such as:
+- CascadeType.PERSIST when saving both parent and child together.
+- CascadeType.REMOVE if deleting the parent should always delete the child.
+- CascadeType.MERGE when updating both together.
+
+:: When to use what?
+======================
+
+CascadeType.PERSIST — Save Parent and Child Together
+------------------------------------------------------
+📌 Scenario:
+You create a User and set a Profile. When you call "userRepository.save(user)", you also want to automatically save the profile.
+
+In Spring Data JPA, calling "userRepository.save(user)" will also persist "user.getProfile()" under the hood if cascade = PERSIST is set.
+👉 Without it, you'd need to manually call profileRepository.save(profile) first.
+
+
+CascadeType.MERGE — Update Both Entities
+-----------------------------------------
+📌 Scenario:
+You load a User, update their Profile, and save the User. You want the updated profile to be saved too.
+
+Use CascadeType.MERGE:
+
+@OneToOne(cascade = CascadeType.MERGE)
+private Profile profile;
+
+🔍 Explanation:
+In Spring, save() acts like merge for detached entities:
+
+user.setName("New Name");
+user.getProfile().setBio("New Bio");
+userRepository.save(user); // saves both
+
+Without MERGE, only the User would be updated — not the changed Profile.
+
+
+CascadeType.REMOVE — Delete Child with Parent
+---------------------------------------------
+📌 Scenario:
+You delete a User. You also want to delete the linked Profile.
+
+Use CascadeType.REMOVE:
+
+@OneToOne(cascade = CascadeType.REMOVE)
+private Profile profile;
+
+🔍 Explanation:
+In Spring:
+
+userRepository.delete(user) will also delete the Profile.
+👉 But use carefully! Don’t use REMOVE on shared relationships like @ManyToOne.
+
+
+CascadeType.ALL — All in One
+-----------------------------
+Shortcut for:
+PERSIST, MERGE, REMOVE, REFRESH, DETACH
+
+📌 Use When:
+The parent fully owns the child and all actions should cascade.
+
+
+More elaborated scenario:
+==========================
+Before started, lets define some classes.
+
+@Entity
+public class User {
+    @Id @GeneratedValue
+    private Long id;
+
+    private String name;
+
+    @OneToOne(cascade = CascadeType.X)  // We'll change X for each case
+    private Profile profile;
+}
+
+@Entity
+public class Profile {
+    @Id @GeneratedValue
+    private Long id;
+
+    private String bio;
+}
+
+Lets assume,
+
+"""
+User user = new User();
+user.setName("Iqbal");
+
+Profile profile = new Profile();
+profile.setBio("Java Developer");
+
+user.setProfile(profile);
+"""
+
+Now let’s see what happens for each CascadeType:
+
+CascadeType.PERSIST
+---------------------
+@OneToOne(cascade = CascadeType.PERSIST)
+➤ If you call:
+
+userRepository.save(user);
+
+🔍 Under the hood:
+JPA sees that user has a new associated profile.
+
+Because of CascadeType.PERSIST, it will also persist(profile) automatically under the hood.
+
+🛠 SQL operations under the hood:
+"""
+-- INSERT into Profile first (since it’s needed for User FK if bi-directional)
+INSERT INTO profile (bio) VALUES ('Java Developer');
+
+-- Then INSERT into User
+INSERT INTO user (name, profile_id) VALUES ('Iqbal', 1);
+"""
+
+🧠 Notes:
+Without CascadeType.PERSIST, you'd get an error unless you manually saved the profile first.
+
+
+CascadeType.MERGE
+------------------
+
+@OneToOne(cascade = CascadeType.MERGE)
+
+Assume both user and profile already exist in the DB.
+
+➤ If you call:
+
+user.setName("Iqbal Updated");
+profile.setBio("Spring Boot Expert");
+user.setProfile(profile);
+userRepository.save(user);
+
+🔍 Under the hood:
+JPA sees user is attached and being merged.
+
+Because of MERGE, it will also merge the profile.
+
+🛠 SQL under the hood:
+"""
+UPDATE user SET name = 'Iqbal Updated' WHERE id = 1;
+UPDATE profile SET bio = 'Spring Boot Expert' WHERE id = 1;
+"""
+
+🧠 Notes:
+Without MERGE, profile won’t be updated unless explicitly saved.
+
+
+CascadeType.REMOVE
+---------------------
+
+@OneToOne(cascade = CascadeType.REMOVE)
+
+➤ If you call:
+
+userRepository.delete(user);
+
+🔍 Under the hood:
+- JPA will first delete the associated profile.
+- Then delete the user.
+
+🛠 SQL under the hood:
+"""
+DELETE FROM profile WHERE id = 1;
+DELETE FROM user WHERE id = 1;
+"""
+🧠 Notes:
+Prevents orphaned data.
+
+Deletion order matters to avoid foreign key constraint errors.
