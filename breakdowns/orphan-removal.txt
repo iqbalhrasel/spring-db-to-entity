@@ -1,0 +1,54 @@
+
+What is orphanRemoval = true?
+It tells JPA/Hibernate:
+“If a child entity is removed from the parent’s collection or set to null, and it has no other parent, delete it from the database automatically.”
+
+🧩 Which annotations support orphanRemoval?
+You can use it with these relationship annotations:
+
+Annotation			Supports orphanRemoval?
+-----------			-----------------------
+@OneToOne				✅ Yes
+@OneToMany				✅ Yes
+@ManyToOne				❌ No
+@ManyToMany				❌ No
+
+🧠 When to use orphanRemoval = true?
+- Use it when the parent fully owns the child, and:
+- You want the child to be deleted from DB if removed from the parent object in Java.
+- The child should not exist without its parent.
+
+✅ Real-world examples
+1. User and Profile
+
+@OneToOne(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+private Profile profile;
+
+If you do:
+
+user.setProfile(null);
+
+➡️ Hibernate will issue a DELETE FROM profile WHERE id = ... automatically.
+
+2. Order and OrderItems
+
+@OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
+private List<OrderItem> items;
+
+If you remove an item:
+
+order.getItems().remove(item); // item is deleted from DB
+
+🚫 When not to use it
+- If the child is shared between multiple parents.
+- If you don't want automatic deletion.
+
+On @ManyToMany or @ManyToOne — it doesn’t make sense (and isn't supported).
+
+🆚 Cascade vs OrphanRemoval (Quick Comparison)
+Feature					CascadeType.REMOVE					orphanRemoval = true
+--------				------------------					--------------------
+Triggers when			Parent is deleted					Child is removed from parent
+Deletes child?				✅ Yes									✅ Yes
+Shared child safe?			❌ No									❌ No
+Works on				@OneToOne, @OneToMany				@OneToOne, @OneToMany
