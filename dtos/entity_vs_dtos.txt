@@ -1,0 +1,22 @@
+CartItem								CartItemDto
+*********								*************
+== Long id								== Long id
+== Cart cart							[ Cart info dont need, because cart id is already in the object ]
+	- UUID id
+	- LocalDate dateCreated
+	- Set<CartItem> items
+== Product product						== CartProductDto product
+	- Long id								- Long id
+	- String name							- String name
+	- String description					- BigDecimal totalPrice [ price * quantity ]
+	- BigDecimal price
+	- Category category
+== Integer quantity						== Integer quantity
+
+
+
+Cart									CartDto
+*********								*************
+== Long id								== Long id
+== LocalDate dateCreated				[ user don't need date ]
+== Set<CartItem> items					== List<CartItemDto> items
